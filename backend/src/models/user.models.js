@@ -10,11 +10,11 @@ const userSchema = new Schema(
         avatar: { //stores profile picture of user
             type: {
                 url: String, //url: link if hosted on cloud (e.g., AWS S3, Cloudinary).
-                localPath: String, //localPath: file path if stored locally on the server.
+                public_id: String, //localPath: file path if stored locally on the server.
             },
             default: { //default: if no avatar is uploaded, these values are empty.
                 url: ``, 
-                localPath: "",
+                public_id: "",
             }
         },
         username: {

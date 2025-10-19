@@ -8,6 +8,7 @@ import { emailVerificationMailgenContent, forgetPasswordMailgenContent, sendEmai
 import jwt from "jsonwebtoken"
 import crypto from "crypto"
 import { UserRolesEnum } from "../utils/constants.js";
+import { deleteFromCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js";
 
 // Function to generate both access & refresh tokens for a user
 const generateAccessAndRefreshTokens = async (userId) => {
@@ -49,74 +50,115 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new ApiError(409, "User with email or username already exists", [])
     }
 
-    //Create a new user in MongoDB (password gets hashed in pre-save hook)
-    const user = await User.create({
-        email,
-        password,
-        username,
-        role, //client or freelancer
-        isEmailVerified: false,
-    });
+    // ----------- 3️⃣ Handle file uploads (from Multer) -----------
+    const avatarLocalPath = req.files?.avatar?.[0]?.path;
 
-    // Create role-specific profile
-    if (role === UserRolesEnum.CLIENT) {
-        const clientProfile = await ClientProfile.create({
-            user: user._id,
-            companyName: "",
-            about: "",
-            logo: "",
-            contact: "",
-        });
-        user.clientProfile = clientProfile._id;
+    // if (!avatarLocalPath) {
+    //     throw new ApiError(400, "Avatar file is missing");
+    // }
+
+    let avatar
+
+    if (avatarLocalPath) {
+
+        try {
+            avatar = await uploadOnCloudinary(avatarLocalPath)
+            if (!avatar || !avatar.url) {
+                throw new Error("Cloudinary did not return a valid avatar response");
+            }
+            console.log("✅ Avatar uploaded:", avatar.url);
+        } catch (error) {
+            console.error("❌ Avatar upload failed:", error);
+            throw new ApiError(500, "Failed to upload avatar to Cloudinary");
+        }   
     }
 
-    if (role === UserRolesEnum.FREELANCER) {
-        const freelancerProfile = await FreelancerProfile.create({
-            user: user._id,
-            skills: [],
-            portfolio: "",
-            hourlyRate: 0,
-            experience: ""
+    try {
+        //Create a new user in MongoDB (password gets hashed in pre-save hook)
+        const user = await User.create({
+            email,
+            password,
+            username,
+            role, //client or freelancer
+            isEmailVerified: false,
         });
-        user.freelancerProfile = freelancerProfile._id;
-    }
 
-    //Generate a temporary token for email verification
-    const {unHashedToken, hashedToken, tokenExpiry} = user.generateTemporaryToken();
+        if (avatar) {
+            user.avatar = {
+                url: avatar.url,
+                public_id: avatar.public_id
+            };
+        }
 
-    //Store hashed token and expiry inside DB (so we can validate later)
-    user.emailVerificationToken = hashedToken
-    user.emailVerificationExpiry = tokenExpiry
+        // Create role-specific profile
+        if (role === UserRolesEnum.CLIENT) {
+            const clientProfile = await ClientProfile.create({
+                user: user._id,
+                companyName: "",
+                about: "",
+                logo: "",
+                contact: "",
+            });
+            user.clientProfile = clientProfile._id;
+        }
 
-    //Save user with the verification token (skip schema validations again)
-    await user.save({validateBeforeSave: false})
+        if (role === UserRolesEnum.FREELANCER) {
+            const freelancerProfile = await FreelancerProfile.create({
+                user: user._id,
+                skills: [],
+                portfolio: "",
+                hourlyRate: 0,
+                experience: ""
+            });
+            user.freelancerProfile = freelancerProfile._id;
+        }
 
-    //Send email with a verification link containing the *unhashed* token
-    await sendEmail({
-        email: user?.email,
-        subject: "Please verify your email",
-        mailgenContent: emailVerificationMailgenContent(
-            user.username,
-            `${req.protocol}://${req.get("host")}/api/v1/users/verify-email/${unHashedToken}`
-        )
-    });
+        //Generate a temporary token for email verification
+        const {unHashedToken, hashedToken, tokenExpiry} = user.generateTemporaryToken();
 
-    //Fetch user again but exclude sensitive fields (security reasons)
-    const createdUser = await User.findById(user._id)
-        .select("-password -refreshToken -emailVerificationToken -emailVerificationExpiry")
+        //Store hashed token and expiry inside DB (so we can validate later)
+        user.emailVerificationToken = hashedToken
+        user.emailVerificationExpiry = tokenExpiry
 
-    if (!createdUser) {
-        console.log("../backend/src/controllers/auth.controllers.js")
-        throw new ApiError(500, "Something went wrong while registering a user")
-    }
+        //Save user with the verification token (skip schema validations again)
+        await user.save({validateBeforeSave: false})
 
-    return res
-        .status(201)
-        .json({
-            statusCode: 200,
-            user: createdUser,
-            message: "User registered successfully and verification email has been sent on your email"
+        //Send email with a verification link containing the *unhashed* token
+        await sendEmail({
+            email: user?.email,
+            subject: "Please verify your email",
+            mailgenContent: emailVerificationMailgenContent(
+                user.username,
+                `${req.protocol}://${req.get("host")}/api/v1/users/verify-email/${unHashedToken}`
+            )
         });
+
+        //Fetch user again but exclude sensitive fields (security reasons)
+        const createdUser = await User.findById(user._id)
+            .select("-password -refreshToken -emailVerificationToken -emailVerificationExpiry")
+
+        if (!createdUser) {
+            console.log("../backend/src/controllers/auth.controllers.js")
+            throw new ApiError(500, "Something went wrong while registering a user")
+        }
+
+        return res
+            .status(201)
+            .json({
+                statusCode: 200,
+                user: createdUser,
+                message: "User registered successfully and verification email has been sent on your email"
+            });   
+    } catch (error) {
+        console.error("❌ User creation failed:", error);
+
+        // Cleanup Cloudinary uploads if DB creation fails
+        if (avatar?.public_id) {
+            await deleteFromCloudinary(avatar.public_id);
+        }
+
+        throw new ApiError(500, "Something went wrong while registering a user");
+    }
 });
 
 const login = asyncHandler(async (req, res) => {
@@ -482,4 +524,55 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
         )
 })
 
-export {registerUser, login, logoutUser, getCurrentUser, verifyEmail, resendEmailVerification, refreshAccessToken, forgotPasswordRequest, resetForgotPassword, changeCurrentPassword}
+const updateUserAvatar = asyncHandler(async (req, res) => {
+    const avatarLocalPath = req.file?.path
+
+    if (!avatarLocalPath) {
+        throw new ApiError(400, "File is required")
+    }
+
+    const avatar =  await uploadOnCloudinary(avatarLocalPath)
+
+    if (!avatar.url) {
+        throw new ApiError(400, "Something went wrong")
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                avatar: {
+                    url: avatar.url,
+                    public_id: avatar.public_id
+                },
+            }
+        },
+        {
+            new: true
+        }
+    ).select("-password -refreshToken")
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                user,
+                "Avatar updated successfully"
+            )
+        )
+})
+
+export {
+        registerUser, 
+        login, 
+        logoutUser, 
+        getCurrentUser, 
+        verifyEmail, 
+        resendEmailVerification, 
+        refreshAccessToken, 
+        forgotPasswordRequest, 
+        resetForgotPassword, 
+        changeCurrentPassword, 
+        updateUserAvatar
+    }

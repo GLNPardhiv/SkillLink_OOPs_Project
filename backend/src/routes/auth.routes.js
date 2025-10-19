@@ -9,11 +9,19 @@ import {
     refreshAccessToken,
     forgotPasswordRequest,
     resetForgotPassword,
-    changeCurrentPassword 
+    changeCurrentPassword,
+    updateUserAvatar
 } from "../controllers/auth.controllers.js";
 import { validate } from "../middlewares/validator.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
-import { userRegisterValidator, userLoginValidator, userChangeCurrentPasswordValidator, userForgotPasswordValidator, userResetForgotPasswordValidator } from "../validators/index.js";
+import { 
+        userRegisterValidator, 
+        userLoginValidator, 
+        userChangeCurrentPasswordValidator, 
+        userForgotPasswordValidator, 
+        userResetForgotPasswordValidator
+    } from "../validators/index.js";
+import { upload } from "../middlewares/multer.middleware.js";
 
 const router = Router()
 
@@ -21,7 +29,17 @@ const router = Router()
 
 //User registration route
 //Validates request body first, then registers the user
-router.route("/register").post(userRegisterValidator(), validate, registerUser)
+router.route("/register").post(
+    upload.fields([
+        {
+            name: "avatar",
+            maxCount: 1
+        }
+    ]), 
+    userRegisterValidator(),
+    validate, 
+    registerUser
+)
 
 //User login route
 //Validates request body first, then logs in the user
@@ -59,6 +77,8 @@ router.route("/change-password").post(verifyJWT, userChangeCurrentPasswordValida
 //Resend email verification route
 //Sends verification email again
 router.route("/resend-email-verification").post(verifyJWT, resendEmailVerification)
+
+router.route("/update-avatar").post(verifyJWT, upload.single("avatar"), updateUserAvatar);
 
 export default router
 
