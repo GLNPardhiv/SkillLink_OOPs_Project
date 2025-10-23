@@ -11,7 +11,7 @@ import EditProfile from "./pages/EditProfile";
 import ClientDashboard from "./pages/ClientDashboard";
 import FreelancerDashboard from "./pages/FreelancerDashboard";
 import NotFound from "./pages/NotFound";
-
+import PostJob from "@/pages/PostJob";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -29,7 +29,8 @@ const App = () => (
           <Route path="/client-dashboard" element={<ClientDashboard />} />
           <Route path="/freelancer-dashboard" element={<FreelancerDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
+         <Route path="/post-job" element={<PostJob />} />
+
         </Routes>
       </BrowserRouter>
     </TooltipProvider>

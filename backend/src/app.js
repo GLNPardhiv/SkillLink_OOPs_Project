@@ -34,6 +34,8 @@ import jobRoutes from "./routes/job.routes.js"
 import bidRoutes from "./routes/bid.routes.js";
 //importing invitation routes
 import invitationRoutes from "./routes/invitation.routes.js"
+//import escrowRoutes 
+import escrowRoutes from "./routes/escrow.routes.js";
 
 //url for healthCheck
 app.use("/api/v1/healthCheck", healthCheckRouter);
@@ -53,5 +55,7 @@ app.use("/api/v1/bids", bidRoutes)
 //url for invitations
 app.use("/api/v1/invitations", invitationRoutes)
 
+//url for escrow
+app.use("/api/v1/escrow", escrowRoutes);
 export default app
 

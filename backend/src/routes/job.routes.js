@@ -1,9 +1,10 @@
-import { Router } from "express"
-import { postJob } from "../controllers/job.controllers.js"
-import { verifyJWT } from "../middlewares/auth.middleware.js"
+import express from "express";
+import { postJob } from "../controllers/job.controllers.js";
+import { verifyJWT } from "../middlewares/auth.middleware.js";
 
-const router = Router()
+const router = express.Router();
 
-router.post("/create", verifyJWT, postJob)
+// POST a new job
+router.post("/", verifyJWT, postJob);
 
-export default router
+export default router;
