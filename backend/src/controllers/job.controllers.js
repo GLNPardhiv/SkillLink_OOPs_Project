@@ -69,4 +69,23 @@ const postJob = asyncHandler(async (req, res) => {
     .json(new ApiResponse(201, job, "Job posted successfully"));
 });
 
-export { postJob };
+
+const searchJobs = asyncHandler(async (req, res) => {
+    const { keyword, type, minBudget, maxBudget } = req.query;
+
+    let filter = {};
+    if (keyword) filter.title = { $regex: keyword, $options: "i" };
+    if (type) filter.type = type;
+    if (minBudget || maxBudget) {
+        filter.budget = {};
+        if (minBudget) filter.budget.$gte = Number(minBudget);
+        if (maxBudget) filter.budget.$lte = Number(maxBudget);
+    }
+
+    const jobs = await Job.find(filter)
+        .populate("client", "username email")
+        .sort({ createdAt: -1 });
+
+    res.status(200).json(new ApiResponse(200, jobs, "Jobs fetched successfully"));
+});
+export { postJob , searchJobs};
